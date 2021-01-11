@@ -46,7 +46,7 @@ bar_y_pos = screen_height - stage_height - bar_height
 
 # 막대 움직임 제어
 bar_to_x = 0
-bar_speed = 0.2
+bar_speed = 0.4
 
 # 공 만들기 (5x5 size)
 ball = pygame.image.load(os.path.join(image_path, "ball.png"))
@@ -57,8 +57,8 @@ ball_x_pos = (screen_width / 2 ) - (ball_width / 2)
 ball_y_pos = screen_height - stage_height - bar_height - ball_height
 
 # 공 움직임 제어
-ball_speed_x = 0.1
-ball_speed_y = 0.1 
+ball_speed_x = 0.2
+ball_speed_y = 0.2 
 ball_max_speed_x = 0.5
 ball_max_speed_y = 0.5
 
@@ -66,6 +66,7 @@ ball_max_speed_y = 0.5
 blocks = []
 block_rows = 5
 block_cols = 10
+blocks_to_check = []
 block_to_remove = -1
 
 block_img = pygame.image.load(os.path.join(image_path, "block_square.png"))
@@ -105,7 +106,7 @@ game_result = "Game Over"
 # 이벤트 루프
 running = True # 게임이 진행 중인가?
 while running:
-    dt = clock.tick(60) # 게임화면의 초당 프레임 수를 설정
+    dt = clock.tick(30) # 게임화면의 초당 프레임 수를 설정
 
 ###############################################################
 
@@ -185,25 +186,74 @@ while running:
 
         # 볼과 블럭의 충돌을 처리한다.
         # 일단 충돌했는지 파악하고, 충돌했으면 옆면으로 부딪혔는지, 위아래 면으로 부딪혔는지 파악해서
-        # 공을 수직으로 튕겨낼 것인지 수평으로 튕겨낼 것인지 결정한다.
-        # TODO: 디버깅 요망
+
+        # 공이 충돌했을 때 valid한 충돌인지 계산
+        # 공을 한번에 하나씩만 지울것이라 for loop 밖에서 돌것이다.
         if ball_rect.colliderect(block_rect):
-            side_overlap = min(abs(block_rect.left - ball_rect.right), abs(block_rect.right - ball_rect.left)) 
-            topdown_overlap = min(abs(block_rect.top - ball_rect.bottom), abs(block_rect.bottom - ball_rect.top)) 
-            if side_overlap > topdown_overlap: 
-                print("updown collision")
-                ball_speed_y *= -1
-            else:
-                print("side collision")
-                ball_speed_x *= -1
+            left_overlap = ball_rect.right - block_rect.left
+            right_overlap = block_rect.right - ball_rect.left
+            top_overlap = ball_rect.bottom - block_rect.top
+            bottom_overlap = block_rect.bottom - ball_rect.top
             
-            block_to_remove = block_idx
-            break
-        
+            collision_side_list = []
+            # 공의 타당한 충돌방향과 충돌 후 지난 시간을 구해준다.
+            if left_overlap > 0 and ball_speed_x > 0:
+                direction = 'horizontal'
+                t_after_col = left_overlap / abs(ball_speed_x)
+                collision_side_list.append((direction, t_after_col))
+            if right_overlap > 0 and ball_speed_x < 0:
+                direction = 'horizontal'
+                t_after_col = right_overlap / abs(ball_speed_x)
+                collision_side_list.append((direction, t_after_col))
+            if top_overlap > 0 and ball_speed_y > 0:
+                direction = 'vertical'
+                t_after_col = top_overlap / abs(ball_speed_y)
+                collision_side_list.append((direction, t_after_col))
+            if bottom_overlap > 0 and ball_speed_y < 0:
+                direction = 'vertical'
+                t_after_col = bottom_overlap / abs(ball_speed_y)
+                collision_side_list.append((direction, t_after_col))
+            
+            print(collision_side_list)
+            print(ball_speed_x, ball_speed_y)
+            # 충돌 후 시간이 가장 큰 것을 구해서 가장 먼저 충돌했을 면을 구한다.
+            min_direction = None
+            min_t = 0
+
+            for direction, t_after_col in collision_side_list:
+                if t_after_col < min_t or min_direction == None:
+                    min_t = t_after_col
+                    min_direction = direction
+
+            blocks_to_check.append({
+                'idx': block_idx,
+                'side': min_direction,
+                't_after_col': min_t
+            })
+
+    # 여러 블럭이 다 충돌했을 것 같은 경우에 충돌 후 시간이 가장 많이 지난 블럭만 지운다.
+    min_idx = -1
+    min_t = 0
+    min_side = None
+    for block in blocks_to_check:
+        if block['t_after_col'] < min_t or min_side == None:
+            min_idx = block['idx']
+            min_t = block['t_after_col']
+            min_side = block['side']
+    
     # 충돌한 블럭은 지워준다.
-    if block_to_remove >= 0:
-        del blocks[block_to_remove]
-        block_to_remove = -1
+    if min_idx >= 0:
+        # 위치를 딱 충돌할 때로 되돌려 놓는다.
+        # ball_x_pos = ball_x_pos - (ball_speed_x * max_t)
+        # ball_y_pos = ball_y_pos - (ball_speed_x * max_t)
+        # 필요한 속도를 반대 방향으로 바꾸어 준다.
+        print(min_side)
+        if min_side == 'horizontal':
+            ball_speed_x = -ball_speed_x
+        else:
+            ball_speed_y = -ball_speed_y
+        del blocks[min_idx]
+    blocks_to_check = []
 
     # 모든 블럭을 다 없앨 경우 성공
     if len(blocks) == 0:
