@@ -24,6 +24,13 @@ class GameObj(pygame.sprite.Sprite):
         self.height = self.rect.size[1]
         self.rect.x = x
         self.rect.y = y
+    
+    def update_rect(self, x, y):
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.width = self.rect.size[0]
+        self.height = self.rect.size[1]
         
 
 class Bar(GameObj):
@@ -53,28 +60,37 @@ class Bar(GameObj):
             self.is_wide = False
             self.update_rect(prev_x, prev_y)
 
-    def update_rect(self, x, y):
-        self.rect = self.image.get_rect()
-        self.rect.x = x
-        self.rect.y = y
-        self.width = self.rect.size[0]
-        self.height = self.rect.size[1]
+
 
 
 class Ball(GameObj):
 
-    img_src = os.path.join(image_path, "ball.png")
+    ball_src = os.path.join(image_path, "ball.png")
+    fireball_src = os.path.join(image_path, "fireball.png")
 
     def __init__(self, x, y):
-        super(Ball, self).__init__(self.img_src, x, y)
+        super(Ball, self).__init__(self.ball_src, x, y)
         # This needs to be updated when the item happens.
         self.speed_x = 0.2
         self.speed_y = 0.2
         self.max_speed = 0.5
         self.delta_x = 0.0
         self.delta_y = 0.0
-        self.is_penetrating = False
+        self.is_fireball = False
+    
+    def do_fireball(self):
+        prev_x = self.rect.x
+        prev_y = self.rect.y
+        self.image = pygame.image.load(self.fireball_src)
+        self.update_rect(prev_x, prev_y)
+        self.is_fireball = True
 
+    def undo_fireball(self):
+        prev_x = self.rect.x
+        prev_y = self.rect.y
+        self.image = pygame.image.load(self.ball_src)
+        self.update_rect(prev_x, prev_y)
+        self.is_fireball = False
 
 class Block(GameObj):
 
@@ -82,7 +98,9 @@ class Block(GameObj):
 
     def __init__(self, x, y):
         super(Block, self).__init__(self.img_src, x, y)
-        # This needs to be updated when the item happens.
+        # item = 0 : 아이템 없음
+        # item = 1 : 파이어볼
+        # item = 2 : 와이드
         self.item = 0
         self.rect.left = self.rect.x
         self.rect.right = self.rect.x + self.width
@@ -150,19 +168,25 @@ block_height = block_size[1]
 # 벽돌들을 위치시켜 준다.
 for i in range(block_rows):
     for j in range(block_cols):
+        idx = block_cols * i + j
         block_x_pos = (screen_width / 2) - (block_width * block_cols / 2) + (block_width * j)
         block_y_pos = 50 + i * block_height
 
         # 벽돌들은 필요한 정보가 위치 정보 뿐이므로 위치 정보를 등록시킨다.
         block = Block(block_x_pos, block_y_pos)
+        if idx == 48:
+            block.item = 1
         blocks.add(block)
+
 
 # 폰트 정의
 game_font = pygame.font.Font(None, 40)
 
 # 게임 제한 시간
 total_time = 500
+fireball_duration = 10.0
 start_ticks = pygame.time.get_ticks() # 시작 시간
+fireball_start_ticks = start_ticks
 
 # 게임 종료 메세지
 # Time Out
@@ -304,14 +328,19 @@ while running:
     
     # 충돌한 블럭은 지워준다.
     if min_idx >= 0:
-        
+        print(min_idx)
         # 필요한 속도를 반대 방향으로 바꾸어 준다.
-        if min_side == 'horizontal':
-            ball.speed_x = -ball.speed_x
-        else:
-            ball.speed_y = -ball.speed_y
+        # 파이어볼 모드이면 그대로 진행한다.
+        if not ball.is_fireball:
+            if min_side == 'horizontal':
+                ball.speed_x = -ball.speed_x
+            else:
+                ball.speed_y = -ball.speed_y
         blocks_tocheck = blocks.sprites()
         block_to_remove = blocks_tocheck[min_idx]
+        if block_to_remove.item == 1:
+            ball.do_fireball()
+
         blocks.remove(block_to_remove)
     blocks_to_check = []
 
@@ -330,7 +359,11 @@ while running:
     
 ###############################################################
     # 경과 시간 계산
-    elapsed_time = (pygame.time.get_ticks() - start_ticks) / 1000
+    current_ticks = pygame.time.get_ticks()
+    elapsed_time = (current_ticks - start_ticks) / 1000
+    fireball_elapsed_time = (current_ticks - fireball_start_ticks) / 1000
+    if ball.is_fireball and fireball_elapsed_time > fireball_duration:
+        ball.undo_fireball()
     timer = game_font.render("Time : {}".format(int(total_time - elapsed_time)), True, (255, 255, 255))
     
     if total_time - elapsed_time <= 0:
