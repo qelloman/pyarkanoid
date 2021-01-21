@@ -56,7 +56,7 @@ class Bar(GameObj):
         if self.is_wide:
             prev_x = self.rect.x
             prev_y = self.rect.y
-            self.image = pygame.transform.scale(pygame.image.load(self.img_src), (self.width * 1/2, self.height))
+            self.image = pygame.transform.scale(pygame.image.load(self.img_src), (int(self.width * 0.5), self.height))
             self.is_wide = False
             self.update_rect(prev_x, prev_y)
 
@@ -94,10 +94,12 @@ class Ball(GameObj):
 
 class Block(GameObj):
 
-    img_src = os.path.join(image_path, "block_square.png")
+    block_img_src = os.path.join(image_path, "block.png")
+    fireball_block_img_src = os.path.join(image_path, "fireball_block.png")
+    widebar_block_img_src = os.path.join(image_path, "wide_block.png")
 
     def __init__(self, x, y):
-        super(Block, self).__init__(self.img_src, x, y)
+        super(Block, self).__init__(self.block_img_src, x, y)
         # item = 0 : 아이템 없음
         # item = 1 : 파이어볼
         # item = 2 : 와이드
@@ -107,6 +109,13 @@ class Block(GameObj):
         self.rect.top = self.rect.y
         self.rect.bottom = self.rect.y + self.height
 
+    def set_to_fireball_block(self):
+        self.item = 1
+        self.image = pygame.image.load(self.fireball_block_img_src)
+
+    def set_to_widebar_block(self):
+        self.item = 2
+        self.image = pygame.image.load(self.widebar_block_img_src)
 
 
 ###############################################################
@@ -157,13 +166,18 @@ blocks = pygame.sprite.Group()
 
 block_rows = 5
 block_cols = 10
+block_total_num = block_rows * block_cols
 blocks_to_check = []
 block_to_remove = -1
 
-block_img = pygame.image.load(os.path.join(image_path, "block_square.png"))
+block_img = pygame.image.load(os.path.join(image_path, "block.png"))
 block_size = block_img.get_rect().size
 block_width = block_size[0]
 block_height = block_size[1]
+
+fireball_item_num = 2
+widebar_item_num = 2
+item_block_idx_list = random.sample(range(block_rows * block_cols), fireball_item_num + widebar_item_num)
 
 # 벽돌들을 위치시켜 준다.
 for i in range(block_rows):
@@ -174,8 +188,10 @@ for i in range(block_rows):
 
         # 벽돌들은 필요한 정보가 위치 정보 뿐이므로 위치 정보를 등록시킨다.
         block = Block(block_x_pos, block_y_pos)
-        if idx == 48:
-            block.item = 1
+        if idx in item_block_idx_list[0:fireball_item_num]:
+            block.set_to_fireball_block()
+        elif idx in item_block_idx_list[fireball_item_num:fireball_item_num+widebar_item_num]:
+            block.set_to_widebar_block()
         blocks.add(block)
 
 
@@ -185,8 +201,11 @@ game_font = pygame.font.Font(None, 40)
 # 게임 제한 시간
 total_time = 500
 fireball_duration = 10.0
+widebar_duration = 10.0
+
 start_ticks = pygame.time.get_ticks() # 시작 시간
 fireball_start_ticks = start_ticks
+widebar_start_ticks = start_ticks
 
 # 게임 종료 메세지
 # Time Out
@@ -328,7 +347,6 @@ while running:
     
     # 충돌한 블럭은 지워준다.
     if min_idx >= 0:
-        print(min_idx)
         # 필요한 속도를 반대 방향으로 바꾸어 준다.
         # 파이어볼 모드이면 그대로 진행한다.
         if not ball.is_fireball:
@@ -336,10 +354,16 @@ while running:
                 ball.speed_x = -ball.speed_x
             else:
                 ball.speed_y = -ball.speed_y
+
         blocks_tocheck = blocks.sprites()
         block_to_remove = blocks_tocheck[min_idx]
+
         if block_to_remove.item == 1:
             ball.do_fireball()
+            fireball_start_ticks = pygame.time.get_ticks()
+        elif block_to_remove.item == 2:
+            bar.get_wide()
+            widebar_start_ticks = pygame.time.get_ticks()
 
         blocks.remove(block_to_remove)
     blocks_to_check = []
@@ -362,8 +386,30 @@ while running:
     current_ticks = pygame.time.get_ticks()
     elapsed_time = (current_ticks - start_ticks) / 1000
     fireball_elapsed_time = (current_ticks - fireball_start_ticks) / 1000
+    widebar_elapsed_time = (current_ticks - widebar_start_ticks) / 1000
+
+    effect_str = ''
+    effect_str_color = (255, 255, 255)
+
+    # 이펙트 문구와 색상 정하기
+    if ball.is_fireball:
+        effect_str = 'Fireball'
+        effect_str_color = (255, 0, 0)
+    if bar.is_wide:
+        if effect_str == '':
+            effect_str += 'Wide Bar'
+        else:
+            effect_str += ' Wide Bar'
+        effect_str_color = (255, 0, 0)
+    effect = game_font.render(effect_str, True, effect_str_color)
+
+    # 이펙트들 타이머
     if ball.is_fireball and fireball_elapsed_time > fireball_duration:
         ball.undo_fireball()
+
+    if bar.is_wide and widebar_elapsed_time > widebar_duration:
+        bar.get_narrow()
+
     timer = game_font.render("Time : {}".format(int(total_time - elapsed_time)), True, (255, 255, 255))
     
     if total_time - elapsed_time <= 0:
@@ -375,7 +421,8 @@ while running:
     blocks.draw(screen)
     sprites.draw(screen)
     screen.blit(timer, (10, 10))
-
+    effect_str_width, effect_str_height = effect.get_size()
+    screen.blit(effect, (screen_width - effect_str_width - 50, 10))
     pygame.display.update() # 게임 화면을 다시 그리기 
 ###############################################################
 
